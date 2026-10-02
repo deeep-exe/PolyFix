@@ -1,0 +1,39 @@
+@"
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+*.log
+.vite/
+
+# Generated data
+backend/api/uploads/
+backend/api/outputs/
+
+# Model weights
+*.pt
+*.safetensors
+*.ckpt
+*.onnx
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Electron builds
+electron/out/
+electron/release/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+"@ | Set-Content -Encoding utf8 .gitignore
