@@ -1,0 +1,7 @@
+{
+  "id": "mock-sphere",
+  "name": "Mock Sphere",
+  "version": "0.1.0",
+  "type": "model",
+  "entry": "generator.py"
+}

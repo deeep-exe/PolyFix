@@ -1,11 +1,14 @@
 import uuid
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from .runs import RunManager
-from .generators import mock
 
+from .runs import RunManager
+from . import extensions
+
+# ── Setup ────────────────────────────────────────────────
 BASE = Path(__file__).resolve().parent.parent
 UPLOADS = BASE / "uploads"
 OUTPUTS = BASE / "outputs"
@@ -14,8 +17,7 @@ OUTPUTS.mkdir(exist_ok=True)
 
 app = FastAPI()
 
-# CORS: lets the React app (on port 5173) talk to this server (port 8000).
-# Without it the browser blocks the requests.
+# CORS: lets the React app (on port 5173) talk to this server (port 8000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -24,6 +26,8 @@ app.add_middleware(
 )
 
 manager = RunManager()
+installed = extensions.load_all()
+
 
 def get_run_or_404(run_id: str):
     run = manager.runs.get(run_id)
@@ -31,24 +35,48 @@ def get_run_or_404(run_id: str):
         raise HTTPException(404, "run not found")
     return run
 
+
+# ── Routes ───────────────────────────────────────────────
 @app.get("/health")
 def health():
     return {"ok": True}
 
+
+@app.get("/extensions")
+def list_extensions():
+    return [e["manifest"] for e in installed.values()]
+
+
 @app.post("/runs")
-async def create_run(image: UploadFile = File(...)):
+async def create_run(
+    image: UploadFile = File(...),
+    extension_id: str = Form(...),
+):
+    ext = installed.get(extension_id)
+    if not ext:
+        raise HTTPException(400, "unknown extension")
+
     suffix = Path(image.filename or "").suffix.lower()
     if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
         raise HTTPException(400, "unsupported image type")
+
     path = UPLOADS / f"{uuid.uuid4().hex}{suffix}"
     path.write_bytes(await image.read())
-    run = manager.submit(mock.generate, str(path), str(OUTPUTS))
+
+    run = manager.submit(ext["generate"], str(path), str(OUTPUTS))
     return {"id": run.id, "status": run.status}
+
 
 @app.get("/runs/{run_id}")
 def get_run(run_id: str):
     r = get_run_or_404(run_id)
-    return {"id": r.id, "status": r.status, "progress": r.progress, "error": r.error}
+    return {
+        "id": r.id,
+        "status": r.status,
+        "progress": r.progress,
+        "error": r.error,
+    }
+
 
 @app.get("/runs/{run_id}/result")
 def get_result(run_id: str):
@@ -56,6 +84,7 @@ def get_result(run_id: str):
     if r.status != "done":
         raise HTTPException(409, "not ready yet")
     return FileResponse(r.output_path, media_type="model/gltf-binary")
+
 
 @app.delete("/runs/{run_id}")
 def cancel_run(run_id: str):

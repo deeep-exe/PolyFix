@@ -7,8 +7,8 @@ export function useRun() {
   const [run, setRun] = useState<any>(null);
   const timer = useRef<number | undefined>(undefined);
 
-  const start = async (file: File) => {
-    const { id } = await createRun(file);
+  const start = async (file: File, extensionId: string) => {
+    const { id } = await createRun(file, extensionId);
     setRun({ id, status: "queued", progress: 0 });
 
     timer.current = window.setInterval(async () => {
