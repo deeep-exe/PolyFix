@@ -3,6 +3,9 @@ import { useRun } from "./hooks/useRun";
 import Viewer from "./components/Viewer";
 import { resultUrl, getExtensions } from "./api/client";
 
+
+import InstallExtension from "./components/InstallExtension";
+
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [extensions, setExtensions] = useState<any[]>([]);
@@ -22,7 +25,7 @@ export default function App() {
   return (
     <div className="max-w-xl mx-auto p-6 space-y-4">
       <h1 className="text-2xl font-bold">Image to 3D</h1>
-
+      <InstallExtension onInstalled={() => setTimeout(() => window.location.reload(), 1200)} /> 
       {/* Extension dropdown */}
       <select
         className="border rounded px-3 py-2 w-full"

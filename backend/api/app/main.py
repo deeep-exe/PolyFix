@@ -1,12 +1,14 @@
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
+from . import extensions, installer
 from .runs import RunManager
-from . import extensions
+
 
 # ── Setup ────────────────────────────────────────────────
 BASE = Path(__file__).resolve().parent.parent
@@ -29,6 +31,15 @@ manager = RunManager()
 installed = extensions.load_all()
 
 
+class InstallRequest(BaseModel):
+    url: str
+ 
+def reload_extensions():
+    installed.clear()  # keep the same dict, so create_run still sees it
+    installed.update(extensions.load_all())
+
+
+
 def get_run_or_404(run_id: str):
     run = manager.runs.get(run_id)
     if not run:
@@ -45,6 +56,31 @@ def health():
 @app.get("/extensions")
 def list_extensions():
     return [e["manifest"] for e in installed.values()]
+
+
+@app.post("/extensions/install")
+def install_extension(req: InstallRequest):
+    try:
+        manifest = installer.install_from_github(req.url)
+    except installer.InstallError as e:
+        raise HTTPException(400, str(e))
+ 
+    reload_extensions()
+    if manifest["id"] not in installed:
+        installer.uninstall(manifest["id"])  # it would not load: undo
+        raise HTTPException(400, "Downloaded, but the extension could not be loaded.")
+    return manifest
+ 
+@app.delete("/extensions/{ext_id}")
+def remove_extension(ext_id: str):
+    try:
+        installer.uninstall(ext_id)
+    except installer.InstallError as e:
+        raise HTTPException(400, str(e))
+    reload_extensions()
+    return {"ok": True}
+
+
 
 
 @app.post("/runs")
