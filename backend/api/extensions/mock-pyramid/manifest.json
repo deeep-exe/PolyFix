@@ -1,0 +1,7 @@
+{
+  "id": "mock-pyramid",
+  "name": "Mock Pyramid",
+  "version": "0.1.0",
+  "type": "model",
+  "entry": "generator.py"
+}
