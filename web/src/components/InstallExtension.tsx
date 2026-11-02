@@ -1,61 +1,87 @@
-import { useState } from "react";
- 
-const API = "http://localhost:8000";
- 
-type Props = { onInstalled: () => void };
- 
-export default function InstallExtension({ onInstalled }: Props) {
+import { useRef, useState } from "react";
+import { installExtensionZip } from "../api/client";
+
+type Props = {
+  onInstalled: () => void;
+  onStartInstall: (url: string) => Promise<string>;
+};
+
+export default function InstallExtension({ onInstalled, onStartInstall }: Props) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
- 
+  const zipInput = useRef<HTMLInputElement>(null);
+
   async function install() {
+    const value = url.trim();
+    if (!value) return;
     setBusy(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API}/extensions/install`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+      await onStartInstall(value);
+      setMessage({ ok: true, text: "Download started. Track progress below." });
+      setUrl("");
+      onInstalled();
+    } catch (e) {
+      setMessage({
+        ok: false,
+        text: e instanceof Error ? e.message : "Could not start the installation.",
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage({ ok: false, text: data.detail ?? "Install failed." });
-      } else {
-        setMessage({ ok: true, text: `Installed "${data.name}"!` });
-        setUrl("");
-        onInstalled();
-      }
-    } catch {
-      setMessage({ ok: false, text: "Cannot reach the backend. Is uvicorn running?" });
     } finally {
       setBusy(false);
     }
   }
- 
+
+  async function uploadZip(file?: File) {
+    if (!file) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await installExtensionZip(file);
+      setMessage({ ok: true, text: "ZIP upload started. Track progress below." });
+      onInstalled();
+    } catch (e) {
+      setMessage({
+        ok: false,
+        text: e instanceof Error ? e.message : "Could not upload the ZIP archive.",
+      });
+    } finally {
+      setBusy(false);
+      if (zipInput.current) zipInput.current.value = "";
+    }
+  }
+
   return (
-    <div className="w-full max-w-2xl mx-auto my-6">
-      <label className="block mb-2 text-sm text-gray-300">
-        Install an extension from GitHub
-      </label>
-      <div className="flex gap-2">
+    <div className="install-extension">
+      <label>Install Extension or Model</label>
+      <div className="source-pills">
+        <button type="button" onClick={() => setUrl("https://github.com/")}>GitHub</button>
+        <button type="button" onClick={() => setUrl("https://huggingface.co/")}>Hugging Face</button>
+        <button type="button" onClick={() => zipInput.current?.click()}>Local ZIP</button>
+      </div>
+      <input
+        ref={zipInput}
+        className="zip-file-input"
+        type="file"
+        accept=".zip,application/zip"
+        onChange={(event) => void uploadZip(event.target.files?.[0])}
+      />
+      <div className="install-row">
         <input
-          className="flex-1 px-3 py-2 rounded border border-gray-600 bg-transparent"
-          placeholder="https://github.com/user/repo"
+          placeholder="Paste GitHub repo, Hugging Face URL, or Model ID (e.g., tencent/Hunyuan3D-2mini)"
           value={url}
-          onChange={(e) => setUrl(e.target.value)}
+          onChange={(event) => setUrl(event.target.value)}
           disabled={busy}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && url.trim()) void install();
+          }}
         />
-        <button
-          className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-          onClick={install}
-          disabled={busy || url.trim() === ""}
-        >
-          {busy ? "Installing..." : "Install"}
+        <button onClick={() => void install()} disabled={busy || url.trim() === ""}>
+          {busy ? "…" : "Install"}
         </button>
       </div>
       {message && (
-        <p className={`mt-2 text-sm ${message.ok ? "text-green-400" : "text-red-400"}`}>
+        <p className={message.ok ? "install-success" : "install-error"}>
           {message.text}
         </p>
       )}
