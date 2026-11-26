@@ -1,0 +1,10 @@
+{
+  "id": "hunyuan3d-2mini",
+  "name": "Hunyuan3D 2 Mini (weights only)",
+  "version": "imported",
+  "type": "model",
+  "entry": "generator.py",
+  "requires_gpu": true,
+  "source_url": "https://huggingface.co/tencent/Hunyuan3D-2mini",
+  "storage_category": "image-to-3d"
+}

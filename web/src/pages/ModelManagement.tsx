@@ -189,6 +189,7 @@ export default function ModelManagement({ onModelsChanged }: Props) {
                   <div><dt>Version</dt><dd>{model.version}</dd></div>
                   <div><dt>Storage</dt><dd>{formatBytes(model.size_bytes)}</dd></div>
                   <div><dt>Source</dt><dd>{model.source_url || "Local extension"}</dd></div>
+                  <div><dt>Category</dt><dd>{model.storage_category}</dd></div>
                   <div><dt>Path</dt><dd title={model.local_path}>{model.local_path}</dd></div>
                   <div><dt>GPU</dt><dd>{model.requires_gpu ? "CUDA required" : "Standard / Demo"}</dd></div>
                 </dl>
@@ -203,8 +204,14 @@ export default function ModelManagement({ onModelsChanged }: Props) {
                   >
                     Test Model Ingest
                   </button>
-                  <button type="button" className="delete-model" onClick={() => void removeModel(model)}>
-                    Delete Model
+                  <button
+                    type="button"
+                    className="delete-model"
+                    disabled={!model.removable}
+                    title={model.removable ? "Delete downloaded model" : "Bundled model assets are managed with their extension"}
+                    onClick={() => void removeModel(model)}
+                  >
+                    {model.removable ? "Delete Model" : "Bundled"}
                   </button>
                 </div>
               </article>

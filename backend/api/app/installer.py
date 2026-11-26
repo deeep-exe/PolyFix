@@ -7,7 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from .extensions import EXT_DIR
+from .storage import CATEGORIES, category_for, iter_model_folders, model_path
 
 # Only plain https://github.com/<user>/<repo> links are accepted.
 GITHUB_URL = re.compile(
@@ -77,16 +77,21 @@ def install_from_github(url: str) -> dict:
     if not GITHUB_URL.match(url):
         raise InstallError("Please paste a link like https://github.com/user/repo")
 
-    EXT_DIR.mkdir(exist_ok=True)
-    temp = EXT_DIR / f".tmp-{uuid.uuid4().hex[:8]}"
+    staging_root = CATEGORIES["image-to-3d"]
+    staging_root.mkdir(parents=True, exist_ok=True)
+    temp = staging_root / f".tmp-{uuid.uuid4().hex[:8]}"
     try:
         _clone(url, temp)
         manifest = _check_manifest(temp)
+        category = category_for(manifest, url)
+        manifest["storage_category"] = category
+        manifest.setdefault("source_url", url)
 
-        final = EXT_DIR / manifest["id"]
+        final = model_path(manifest["id"], category)
         if final.exists():
             raise InstallError(f'"{manifest["id"]}" is already installed.')
 
+        (temp / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         _remove_folder(temp / ".git")  # we only need the files, not the history
         temp.rename(final)
         (final / "source.txt").write_text(url, encoding="utf-8")
@@ -99,7 +104,9 @@ def install_from_github(url: str) -> dict:
 def uninstall(ext_id: str):
     if not SAFE_ID.match(ext_id):
         raise InstallError("Invalid extension id.")
-    folder = EXT_DIR / ext_id
+    folder = next((path for path in iter_model_folders() if path.name == ext_id), None)
+    if folder is None:
+        raise InstallError("Installed extension was not found in model storage.")
     # Only extensions that came from a link carry source.txt, so your own
     # hand-made extensions can never be deleted by accident.
     if not (folder / "source.txt").exists():

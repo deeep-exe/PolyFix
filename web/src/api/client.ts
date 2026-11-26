@@ -186,6 +186,8 @@ export type ManagedModel = {
   type: string;
   source_url?: string;
   local_path: string;
+  storage_category: string;
+  removable: boolean;
   size_bytes: number;
   installed: boolean;
   cuda_ready: boolean;
