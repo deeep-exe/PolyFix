@@ -1,0 +1,6 @@
+hy3dgen @ git+https://github.com/Tencent/Hunyuan3D-2.git
+trimesh
+pillow
+einops
+omegaconf
+huggingface-hub
