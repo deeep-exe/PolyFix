@@ -14,6 +14,7 @@ import {
   MiniMap,
   ReactFlowProvider,
   useReactFlow,
+  type Viewport,
 } from "@xyflow/react";
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -236,14 +237,14 @@ function PolyFixNodeView({ data }: NodeProps<PolyFixNode>) {
           {data.nodeNumber === "04" && (
             <div className="node-model-controls" onPointerDown={(event) => event.stopPropagation()}>
               <label htmlFor={`model-select-${data.nodeNumber}`}>
-                <span>Model extension</span>
+                <span>Installed model</span>
                 <select
                   id={`model-select-${data.nodeNumber}`}
                   value={data.selectedExtensionId ?? ""}
                   disabled={data.status === "executing"}
                   onChange={(event) => data.onSelectExtension?.(event.target.value)}
                 >
-                  <option value="">Select model</option>
+                  <option value="">{data.extensions?.length ? "Select installed model" : "No installed models"}</option>
                   {data.extensions?.map((extension) => (
                     <option
                       key={extension.id}
@@ -320,6 +321,8 @@ export interface PolyFixCanvasProps {
   onDeleteNode: (nodeId: string) => void;
   onDuplicateNode: (node: PolyFixNode) => void;
   onToggleNodeBypass: (nodeId: string) => void;
+  initialViewport?: Viewport | null;
+  onViewportChange?: (viewport: Viewport) => void;
 }
 
 export interface PolyFixNodeTemplate {
@@ -355,6 +358,8 @@ function PolyFixFlow({
   onDeleteNode,
   onDuplicateNode,
   onToggleNodeBypass,
+  initialViewport,
+  onViewportChange,
 }: PolyFixCanvasProps) {
   const { screenToFlowPosition } = useReactFlow();
   const [menu, setMenu] = useState<{ x: number; y: number; flowPos: { x: number; y: number } } | null>(null);
@@ -446,7 +451,9 @@ function PolyFixFlow({
           },
         });
         }}
-        fitView
+        fitView={!initialViewport}
+        defaultViewport={initialViewport ?? undefined}
+        onMoveEnd={(_event, viewport) => onViewportChange?.(viewport)}
         fitViewOptions={{ padding: 0.18 }}
         minZoom={0.35}
         maxZoom={1.6}

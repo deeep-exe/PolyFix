@@ -1,4 +1,8 @@
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+export function getApiBaseUrl(): string {
+  return window.polyfix?.apiBaseUrl ?? import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+}
+
+const BASE = getApiBaseUrl();
 
 export type BackendConnectionState = "checking" | "connected" | "disconnected" | "error";
 
@@ -239,6 +243,7 @@ export type ExtensionDownloadTask = {
   total_bytes: number;
   status: "downloading" | "completed" | "failed" | "cancelled";
   status_text: string;
+  notice?: string | null;
   error: string | null;
 };
 

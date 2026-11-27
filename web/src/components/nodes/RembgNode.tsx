@@ -1,6 +1,7 @@
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { useState } from "react";
 import type { PolyFixNodeData } from "../PolyFixNode";
+import { getApiBaseUrl } from "../../api/client";
 
 type RembgData = PolyFixNodeData & {
   imageFile?: File | null;
@@ -27,7 +28,7 @@ export function RembgNodeView({ id, data }: NodeProps<RembgNode>) {
     try {
       const formData = new FormData();
       formData.append("file", data.imageFile);
-      const apiBase = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+      const apiBase = getApiBaseUrl();
       const response = await fetch(`${apiBase}/api/nodes/remove-bg`, {
         method: "POST",
         body: formData,

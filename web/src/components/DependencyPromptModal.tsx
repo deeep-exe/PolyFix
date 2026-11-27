@@ -27,7 +27,7 @@ export default function DependencyPromptModal({
       >
         <div className="dependency-modal-icon" aria-hidden="true">⚠</div>
         <div>
-          <span className="eyebrow">Extension Readiness</span>
+          <span className="eyebrow">Model Readiness</span>
           <h2 id="dependency-modal-title">Missing Dependencies Detected</h2>
           <p><strong>{extension.name}</strong> is not ready to run.</p>
         </div>

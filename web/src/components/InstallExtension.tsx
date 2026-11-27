@@ -53,7 +53,7 @@ export default function InstallExtension({ onInstalled, onStartInstall }: Props)
 
   return (
     <div className="install-extension">
-      <label>Install Extension or Model</label>
+      <label>Install Model</label>
       <div className="source-pills">
         <button type="button" onClick={() => setUrl("https://github.com/")}>GitHub</button>
         <button type="button" onClick={() => setUrl("https://huggingface.co/")}>Hugging Face</button>

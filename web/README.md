@@ -35,6 +35,19 @@ npm run preview
 
 `npm run build` runs the TypeScript project build and creates production assets in `dist/`. `npm run preview` serves those built assets locally for a production-style check.
 
+## Desktop App (Electron)
+
+To run PolyFix as a desktop app (which bundles this React frontend and automatically starts/stops the FastAPI backend in `../backend/api`):
+
+```bash
+cd ../electron
+npm install
+npm run build
+npm start
+```
+
+For live-reload development with Vite + Electron + FastAPI, run `npm run dev` inside `../electron`. See [../electron/README.md](../electron/README.md) for details.
+
 ## Environment Variables
 
 | Variable | Description | Default |

@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..storage import CATEGORIES, category_for, model_path
+from .auto_generator import ensure_generator
 
 
 active_downloads: dict[str, dict] = {}
@@ -79,14 +80,8 @@ def ensure_fallback_manifest(folder: Path, source_url: str) -> dict:
         "source_url": source_url,
     }
     manifest["storage_category"] = category_for(manifest, source_url)
+    ensure_generator(folder, manifest, source_url)
     manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    generator = folder / "generator.py"
-    if not generator.exists():
-        generator.write_text(
-            "def generate(image_path, output_dir, params=None, *args, **kwargs):\n"
-            "    raise RuntimeError('This extension has no compatible generator implementation yet.')\n",
-            encoding="utf-8",
-        )
     return manifest
 
 
@@ -149,6 +144,7 @@ class ExtensionDownloader:
                 "total_bytes": 0,
                 "status": "downloading",
                 "status_text": "Preparing download...",
+                "notice": None,
                 "error": None,
             }
         thread = threading.Thread(
@@ -226,11 +222,13 @@ class ExtensionDownloader:
                 shutil.rmtree(git_dir, ignore_errors=True)
             temp.rename(final)
             (final / "source.txt").write_text(source_url, encoding="utf-8")
+            notice = manifest.get("generator_notice")
             _update(
                 task_id,
                 progress=100,
                 status="completed",
-                status_text="Installed successfully",
+                status_text=notice or "Installed successfully",
+                notice=notice,
                 error=None,
             )
         except Exception as e:

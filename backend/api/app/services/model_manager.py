@@ -12,6 +12,7 @@ from typing import Optional
 
 from ..extensions import EXT_DIR, check_cuda_and_deps
 from ..storage import CATEGORIES, category_for, iter_model_folders, model_path
+from .auto_generator import ensure_generator
 
 
 HF_RE = re.compile(
@@ -287,17 +288,11 @@ class ModelManager:
                 "source_url": source_url,
                 "storage_category": category,
             }
+            ensure_generator(temp, manifest, source_url)
             (temp / "manifest.json").write_text(
                 json.dumps(manifest, indent=2),
                 encoding="utf-8",
             )
-            entry = temp / "generator.py"
-            if not entry.exists():
-                entry.write_text(
-                    "def generate(image_path, output_dir, params=None, *args, **kwargs):\n"
-                    "    raise RuntimeError('This Hugging Face model needs a compatible generator implementation.')\n",
-                    encoding="utf-8",
-                )
 
             temp.rename(target)
             self._update_task(

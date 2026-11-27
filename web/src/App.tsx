@@ -10,6 +10,7 @@ import {
 import {
   checkBackendConnection,
   getExtensions,
+  getModels,
   deleteExtension as deleteExtensionApi,
   checkExtensionDeps,
   checkNodePreflight,
@@ -18,6 +19,7 @@ import {
   type BackendConnectionState,
   type ExtensionDependencyAudit,
   type ExtensionManifest,
+  type ManagedModel,
   type ParameterValue,
   fetchExtensionDocs,
   type ExtensionDocs,
@@ -38,7 +40,16 @@ import {
   useEdgesState,
   useNodesState,
   type Edge,
+  type Viewport,
 } from "@xyflow/react";
+import {
+  clearLayoutConfig,
+  loadLayoutConfig,
+  saveLayoutConfig,
+  serializeFlowEdges,
+  serializeFlowNodes,
+  type SavedLayoutConfig,
+} from "./utils/layoutStorage";
 
 function CubeIcon() {
   return (
@@ -61,6 +72,61 @@ function validateImageFile(file: File): string | null {
   return null;
 }
 
+function isMockModel(item: { id: string; name: string; type?: string }) {
+  const id = item.id.toLowerCase();
+  const name = item.name.toLowerCase();
+  return id.startsWith("mock") || name.startsWith("mock ") || item.type?.toLowerCase() === "mock";
+}
+
+async function fetchInstalledModels(): Promise<ExtensionManifest[]> {
+  const [extResult, modelsResult] = await Promise.allSettled([
+    getExtensions(),
+    getModels(),
+  ]);
+
+  const rawExtensions = extResult.status === "fulfilled" ? extResult.value : [];
+  const managedModels: ManagedModel[] = modelsResult.status === "fulfilled" ? modelsResult.value : [];
+
+  if (extResult.status === "rejected" && modelsResult.status === "rejected") {
+    throw extResult.reason instanceof Error
+      ? extResult.reason
+      : new Error("Could not load installed models.");
+  }
+
+  const installedById = new Map(
+    managedModels
+      .filter((model) => model.installed && !isMockModel(model))
+      .map((model) => [model.id, model]),
+  );
+
+  const filtered = rawExtensions.filter((item) => {
+    if (isMockModel(item)) return false;
+    if (modelsResult.status === "fulfilled") {
+      return installedById.has(item.id);
+    }
+    return true;
+  });
+
+  for (const model of installedById.values()) {
+    if (!filtered.some((item) => item.id === model.id)) {
+      filtered.push({
+        id: model.id,
+        name: model.name,
+        version: model.version,
+        type: model.type,
+        requires_gpu: model.requires_gpu,
+        is_ready: model.cuda_ready,
+        status_message: model.status,
+        removable: model.removable,
+        storage_path: model.local_path,
+        source_url: model.source_url,
+      });
+    }
+  }
+
+  return filtered;
+}
+
 function getParameterDefault(parameter: NonNullable<ExtensionManifest["parameters"]>[string]): ParameterValue {
   if (parameter.default !== undefined) return parameter.default;
   if (parameter.type === "boolean") return false;
@@ -74,12 +140,15 @@ function getParameterDefault(parameter: NonNullable<ExtensionManifest["parameter
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<"studio" | "qa">("studio");
+  const [savedLayout] = useState(() => loadLayoutConfig());
+  const [activeView, setActiveView] = useState<"studio" | "qa">(() => savedLayout?.activeView ?? "studio");
   const [file, setFile] = useState<File | null>(null);
-  const [parameterValues, setParameterValues] = useState<Record<string, ParameterValue>>({});
+  const [parameterValues, setParameterValues] = useState<Record<string, ParameterValue>>(
+    () => savedLayout?.parameterValues ?? {},
+  );
   const [preview, setPreview] = useState<string | null>(null);
   const [extensions, setExtensions] = useState<ExtensionManifest[]>([]);
-  const [selectedExt, setSelectedExt] = useState("");
+  const [selectedExt, setSelectedExt] = useState(() => savedLayout?.selectedExt ?? "");
   const [extensionDocs, setExtensionDocs] = useState<ExtensionDocs | null>(null);
   const [extensionDocsLoading, setExtensionDocsLoading] = useState(false);
   const [extensionDocsError, setExtensionDocsError] = useState("");
@@ -98,19 +167,32 @@ export default function App() {
   const [installingDependencies, setInstallingDependencies] = useState(false);
   const [dependencyInstallError, setDependencyInstallError] = useState("");
   const [preflightError, setPreflightError] = useState("");
-  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => (
+    savedLayout?.isSidebarOpen ?? (typeof window !== "undefined" ? window.innerWidth > 760 : true)
+  ));
+  const [isQaDrawerOpen, setIsQaDrawerOpen] = useState(false);
+  const [isPropertiesOpen, setIsPropertiesOpen] = useState(() => savedLayout?.isPropertiesOpen ?? false);
   const [activeNode, setActiveNode] = useState<"input" | "output">("input");
   const [selectedNodeId, setSelectedNodeId] = useState<"source-image" | "3d-output">("source-image");
   const [isDragging, setIsDragging] = useState(false);
-  const [canvasView, setCanvasView] = useState({ x: -10, y: 0, zoom: 0.65 });
+  const [canvasView, setCanvasView] = useState(
+    () => savedLayout?.canvasView ?? { x: -10, y: 0, zoom: 0.65 },
+  );
+  const [flowViewport, setFlowViewport] = useState<Viewport | null>(
+    () => savedLayout?.viewport ?? null,
+  );
   const [isPanning, setIsPanning] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const inputTitleRef = useRef<HTMLDivElement>(null);
   const outputTitleRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const canvasAreaRef = useRef<HTMLElement>(null);
-  const [inputBox, setInputBox] = useState<NodeBox>({ x: 30, y: 70, width: 280, height: 420 });
-  const [outputBox, setOutputBox] = useState<NodeBox>({ x: 390, y: 55, width: 430, height: 450 });
+  const [inputBox, setInputBox] = useState<NodeBox>(
+    () => savedLayout?.inputBox ?? { x: 30, y: 70, width: 280, height: 420 },
+  );
+  const [outputBox, setOutputBox] = useState<NodeBox>(
+    () => savedLayout?.outputBox ?? { x: 390, y: 55, width: 430, height: 450 },
+  );
   const { run, startRun, stop, clearRun, startError, isStarting } = useRun();
 
   const nodeCatalog: Array<{ id: string; number: string; label: string; category: string; x: number; y: number; ports: PolyFixNode["data"]["ports"] }> = [
@@ -185,8 +267,40 @@ export default function App() {
     },
   }));
 
-  const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState<PolyFixNode>(initialNodes);
-  const [flowEdges, setFlowEdges, onFlowEdgesChange] = useEdgesState(initialEdges);
+  const restoredNodes: PolyFixNode[] | null = savedLayout?.nodes?.length
+    ? savedLayout.nodes.map((saved) => ({
+        id: saved.id,
+        type: saved.type === "rembg" ? "rembg" : "polyfix",
+        position: saved.position,
+        data: {
+          label: saved.data.label,
+          nodeNumber: saved.data.nodeNumber,
+          category: saved.data.category,
+          status: saved.data.isBypassed ? "bypassed" : "idle",
+          progress: 0,
+          params: saved.data.params ?? {},
+          ports: saved.data.ports ?? [],
+          isBypassed: saved.data.isBypassed,
+          isMuted: saved.data.isMuted,
+          preview: null,
+          imageFile: saved.type === "rembg" ? file : undefined,
+          onDataChange: saved.type === "rembg"
+            ? (nodeId: string, changes: Record<string, unknown>) => {
+                setFlowNodes((current) => current.map((item) => (
+                  item.id === nodeId ? { ...item, data: { ...item.data, ...changes } } : item
+                )));
+              }
+            : undefined,
+          onChooseImage: () => fileInput.current?.click(),
+          onDropImage: handleDrop,
+        },
+      }))
+    : null;
+
+  const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState<PolyFixNode>(restoredNodes ?? initialNodes);
+  const [flowEdges, setFlowEdges, onFlowEdgesChange] = useEdgesState(
+    savedLayout?.edges ? savedLayout.edges : initialEdges,
+  );
   const [edgeContextMenu, setEdgeContextMenu] = useState<EdgeContextMenu | null>(null);
   const polyfixFlowRef = useRef<HTMLDivElement>(null);
   const edgeMenuRef = useRef<HTMLDivElement>(null);
@@ -244,13 +358,13 @@ export default function App() {
     setExtensionsError("");
     setExtensionsLoading(true);
     try {
-      const list = await getExtensions();
+      const list = await fetchInstalledModels();
       setExtensions(list);
       setSelectedExt((current) =>
         list.some((extension) => extension.id === current) ? current : list[0]?.id ?? "",
       );
     } catch (error) {
-      setExtensionsError(error instanceof Error ? error.message : "Could not load extensions.");
+      setExtensionsError(error instanceof Error ? error.message : "Could not load installed models.");
     } finally {
       setExtensionsLoading(false);
     }
@@ -300,7 +414,7 @@ export default function App() {
   } = useDownloads((task) => {
     void (async () => {
       await loadExtensions();
-      const list = await getExtensions();
+      const list = await fetchInstalledModels();
       const extension = list.find((candidate) =>
         task.name.toLowerCase() === candidate.name.toLowerCase()
         || (candidate.source_url && task.url.includes(candidate.source_url.replace("https://huggingface.co/", "")))
@@ -311,15 +425,15 @@ export default function App() {
   });
 
   const deleteExtension = async (extension: ExtensionManifest) => {
-    if (!window.confirm("Delete extension " + extension.name + "?")) return;
+    if (!window.confirm("Delete model " + extension.name + "?")) return;
     try {
       await deleteExtensionApi(extension.id);
       if (selectedExt === extension.id) setSelectedExt("");
       await loadExtensions();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not remove the extension.";
+      const message = error instanceof Error ? error.message : "Could not remove the model.";
       setExtensionsError(message);
-      alert(`Error deleting extension: ${message}`);
+      alert(`Error deleting model: ${message}`);
     }
   };
 
@@ -332,7 +446,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    getExtensions()
+    fetchInstalledModels()
       .then((list) => {
         setExtensions(list);
         setSelectedExt((current) =>
@@ -341,7 +455,7 @@ export default function App() {
         setExtensionsLoading(false);
       })
       .catch((error: unknown) => {
-        setExtensionsError(error instanceof Error ? error.message : "Could not load extensions.");
+        setExtensionsError(error instanceof Error ? error.message : "Could not load installed models.");
         setExtensionsLoading(false);
       });
 
@@ -521,22 +635,39 @@ export default function App() {
     }
 
     try {
-      const preflight = await checkNodePreflight(selectedExtension.id);
-      if (!preflight.ready) {
-        const missing = preflight.dependencies.missing_packages.length
-          ? `Missing packages: ${preflight.dependencies.missing_packages.join(", ")}.`
+      const preflight = await checkNodePreflight(selectedExtension.id) as {
+        ready?: boolean;
+        valid?: boolean;
+        message?: string;
+        dependencies?: {
+          missing_packages?: string[];
+          is_ready?: boolean;
+          error?: string;
+        };
+        signature?: {
+          valid?: boolean;
+          message?: string;
+        };
+      };
+      const isReady = preflight.ready ?? preflight.valid ?? false;
+      if (!isReady) {
+        const missingPackages = preflight.dependencies?.missing_packages ?? [];
+        const missing = missingPackages.length
+          ? `Missing packages: ${missingPackages.join(", ")}.`
           : "";
-        const dependencyMessage = preflight.dependencies.is_ready
-          ? ""
-          : missing || preflight.dependencies.error || "Extension dependencies are not ready.";
-        const signatureMessage = preflight.signature.valid
-          ? ""
-          : preflight.signature.message;
+        const dependencyMessage = preflight.dependencies
+          ? (preflight.dependencies.is_ready
+              ? ""
+              : missing || preflight.dependencies.error || "Model dependencies are not ready.")
+          : "";
+        const signatureMessage = preflight.signature
+          ? (preflight.signature.valid ? "" : preflight.signature.message ?? "")
+          : (preflight.message ?? "");
         const message = [dependencyMessage, signatureMessage].filter(Boolean).join(" ");
         setPreflightError(message || "This node is not ready to execute.");
         setFlowNodes((current) => current.map((node) => (
-          node.id === "node_ai_generator"
-            ? { ...node, data: { ...node.data, status: "warning", errorMessage: message } }
+          node.id === "node_ai_generator" || node.id.startsWith("node_ai_generator_") || node.data.nodeNumber === "04"
+            ? { ...node, data: { ...node.data, status: "warning", errorMessage: message || "This node is not ready to execute." } }
             : node
         )));
         return;
@@ -566,7 +697,7 @@ export default function App() {
     const defaults = Object.fromEntries(
       Object.entries(parameters).map(([name, parameter]) => [name, getParameterDefault(parameter)]),
     );
-    queueMicrotask(() => setParameterValues(defaults));
+    queueMicrotask(() => setParameterValues((current) => ({ ...defaults, ...current })));
   }, [selectedExtension]);
 
   const updateParameter = (name: string, value: ParameterValue) => {
@@ -576,8 +707,8 @@ export default function App() {
   useEffect(() => {
     const generatorProgress = isStarting ? 0 : run?.progress ?? 0;
     setFlowNodes((current) => current.map((node) => {
-      const isImage = node.id === "node_image_input";
-      const isGenerator = node.id === "node_ai_generator";
+      const isImage = node.id === "node_image_input" || node.id.startsWith("node_image_input_");
+      const isGenerator = node.id === "node_ai_generator" || node.id.startsWith("node_ai_generator_") || node.data.nodeNumber === "04";
       const isOutput = node.id === "node_3d_viewport";
       const isAudit = node.id === "node_audit_curvature";
       const isRetopo = node.id === "node_retopology_instant";
@@ -754,65 +885,253 @@ export default function App() {
     window.addEventListener("pointerup", handleUp);
   };
 
+  const resetLayout = () => {
+    clearLayoutConfig();
+    setActiveView("studio");
+    setIsSidebarOpen(typeof window !== "undefined" ? window.innerWidth > 760 : true);
+    setIsPropertiesOpen(false);
+    setFlowNodes(initialNodes);
+    setFlowEdges(initialEdges);
+    setFlowViewport(null);
+    setCanvasView({ x: -10, y: 0, zoom: 0.65 });
+    setInputBox({ x: 30, y: 70, width: 280, height: 420 });
+    setOutputBox({ x: 390, y: 55, width: 430, height: 450 });
+  };
+
+  const latestLayoutRef = useRef<SavedLayoutConfig | null>(null);
+  latestLayoutRef.current = {
+    version: 1,
+    activeView,
+    isSidebarOpen,
+    isPropertiesOpen,
+    selectedExt,
+    parameterValues,
+    nodes: serializeFlowNodes(flowNodes),
+    edges: serializeFlowEdges(flowEdges),
+    viewport: flowViewport,
+    canvasView,
+    inputBox,
+    outputBox,
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (latestLayoutRef.current) {
+        saveLayoutConfig(latestLayoutRef.current);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeView,
+    isSidebarOpen,
+    isPropertiesOpen,
+    selectedExt,
+    parameterValues,
+    flowNodes,
+    flowEdges,
+    flowViewport,
+    canvasView,
+    inputBox,
+    outputBox,
+  ]);
+
+  useEffect(() => {
+    const flushLayout = () => {
+      if (latestLayoutRef.current) {
+        saveLayoutConfig(latestLayoutRef.current);
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushLayout();
+    };
+    window.addEventListener("beforeunload", flushLayout);
+    window.addEventListener("pagehide", flushLayout);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      flushLayout();
+      window.removeEventListener("beforeunload", flushLayout);
+      window.removeEventListener("pagehide", flushLayout);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isQaDrawerOpen && !(isSidebarOpen && window.innerWidth <= 760)) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (activeView === "qa") setIsQaDrawerOpen(false);
+      else if (window.innerWidth <= 760) setIsSidebarOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeView, isQaDrawerOpen, isSidebarOpen]);
+
   return (
-    <main className="app-shell flex h-screen w-screen overflow-hidden bg-[#0d0e12]">
+    <main className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[#0d0e12]">
       <Header
         activeView={activeView}
-        setActiveView={setActiveView}
+        setActiveView={(view) => {
+          setActiveView(view);
+          setIsQaDrawerOpen(false);
+        }}
         backendStatus={backendStatus}
         checkingBackend={checkingBackend}
         processing={isWorking || isStarting}
         onRetryConnection={() => void retryConnection()}
+        isSidebarOpen={activeView === "studio" ? isSidebarOpen : isQaDrawerOpen}
+        onToggleSidebar={() => {
+          if (activeView === "studio") setIsSidebarOpen((open) => !open);
+          else setIsQaDrawerOpen((open) => !open);
+        }}
+        onOpenProperties={() => setIsPropertiesOpen(true)}
       />
 
       {activeView === "qa" ? (
-        <GenerationDashboard
-          run={run}
-          startError={startError}
-          selectedExtension={selectedExtension}
-          file={uploadedImage}
-          parameterValues={parameterValues}
-          onRetry={() => uploadedImage && selectedExtension && void startRun(
-            selectedExtension.id,
-            uploadedImage,
-            parameterValues,
+        <>
+          {isQaDrawerOpen && (
+            <button
+              type="button"
+              className="sidebar-backdrop open"
+              aria-label="Close navigation menu"
+              onClick={() => setIsQaDrawerOpen(false)}
+            />
           )}
-          onStudio={() => setActiveView("studio")}
-        />
+          <aside
+            className={`qa-nav-drawer ${isQaDrawerOpen ? "open" : ""}`}
+            aria-label="Workspace navigation"
+          >
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">Navigation</span>
+                <h2>Workspace</h2>
+              </div>
+              <button
+                type="button"
+                className="close-sidebar visible"
+                onClick={() => setIsQaDrawerOpen(false)}
+                aria-label="Close navigation menu"
+              >
+                ×
+              </button>
+            </div>
+            <nav className="qa-drawer-links">
+              <button
+                type="button"
+                className="qa-drawer-link"
+                onClick={() => {
+                  setActiveView("studio");
+                  setIsQaDrawerOpen(false);
+                }}
+              >
+                <span>Node Studio</span>
+                <small>Phase 1</small>
+              </button>
+              <button
+                type="button"
+                className="qa-drawer-link active"
+                onClick={() => setIsQaDrawerOpen(false)}
+              >
+                <span>3D QA Dashboard</span>
+                <small>Phase 2</small>
+              </button>
+            </nav>
+            <div className="qa-drawer-footer">
+              <button
+                type="button"
+                className="qa-drawer-action"
+                onClick={() => {
+                  void loadExtensions();
+                  setIsQaDrawerOpen(false);
+                }}
+              >
+                ↻ Refresh Installed Models
+              </button>
+              <button
+                type="button"
+                className="qa-drawer-action"
+                onClick={() => {
+                  resetLayout();
+                  setIsQaDrawerOpen(false);
+                }}
+              >
+                ↺ Reset UI Layout
+              </button>
+              <button
+                type="button"
+                className="qa-drawer-action"
+                onClick={() => {
+                  void retryConnection();
+                  setIsQaDrawerOpen(false);
+                }}
+              >
+                Check Backend Connection
+              </button>
+            </div>
+          </aside>
+          <GenerationDashboard
+            run={run}
+            startError={startError}
+            selectedExtension={selectedExtension}
+            file={uploadedImage}
+            parameterValues={parameterValues}
+            onRetry={() => uploadedImage && selectedExtension && void startRun(
+              selectedExtension.id,
+              uploadedImage,
+              parameterValues,
+            )}
+            onStudio={() => setActiveView("studio")}
+          />
+        </>
       ) : (
-      <div className="workspace">
-        <aside className="extensions-panel">
+      <div className={`workspace ${isSidebarOpen ? "" : "sidebar-collapsed"}`}>
+        {isSidebarOpen && (
+          <button
+            type="button"
+            className="sidebar-backdrop open"
+            aria-label="Close extensions sidebar"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+        <aside className={`extensions-panel ${isSidebarOpen ? "open" : "collapsed"}`}>
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">Nodes</span>
-              <h2>Extensions</h2>
+              <span className="eyebrow">AI Assets</span>
+              <h2>Models Installed</h2>
             </div>
             <div className="extensions-heading-actions">
               <button
                 type="button"
                 className="extension-refresh"
-                title="Refresh extensions"
+                title="Refresh installed models"
                 onClick={() => void loadExtensions()}
               >
                 ↻
               </button>
               <span className="count">{extensions.length}</span>
+              <button
+                type="button"
+                className="close-sidebar"
+                onClick={() => setIsSidebarOpen(false)}
+                aria-label="Close installed models sidebar"
+              >
+                ×
+              </button>
             </div>
           </div>
 
           <label className="extension-search">
-            <span className="sr-only">Search extensions</span>
+            <span className="sr-only">Search installed models</span>
             <input
               value={extensionSearch}
               onChange={(event) => setExtensionSearch(event.target.value)}
-              placeholder="Search extensions..."
+              placeholder="Search installed models..."
             />
           </label>
 
           {(downloadTasks.length > 0 || downloadError) && (
             <div className="extension-downloads">
               <div className="download-section-title">
-                <span>Downloading Extensions</span>
+                <span>Downloading Models</span>
                 {downloadTasks.some((task) => task.status === "downloading") && <span className="downloading-dot" />}
               </div>
               {downloadError && <div className="download-task-error">{downloadError}</div>}
@@ -847,7 +1166,9 @@ export default function App() {
                     <div className="download-task-message error">Error: {task.error}</div>
                   )}
                   {task.status === "completed" && (
-                    <div className="download-task-message success">Installation complete</div>
+                    <div className="download-task-message success">
+                      {task.notice || "Installation complete"}
+                    </div>
                   )}
                   {task.status === "cancelled" && (
                     <div className="download-task-message">Download cancelled</div>
@@ -920,11 +1241,11 @@ export default function App() {
                 </div>
               );
             })}
-            {extensionsLoading && <div className="empty-state">Loading extensions...</div>}
+            {extensionsLoading && <div className="empty-state">Loading installed models...</div>}
             {!extensionsLoading && extensionsError && (
               <div className="empty-state extension-load-error">
                 <span>{extensionsError}</span>
-                <button type="button" onClick={() => void loadExtensions()}>Retry Loading Extensions</button>
+                <button type="button" onClick={() => void loadExtensions()}>Retry Loading Models</button>
               </div>
             )}
             {!extensionsLoading && extensionSearch.trim() && !extensions.some((extension) =>
@@ -932,10 +1253,10 @@ export default function App() {
                 .toLowerCase()
                 .includes(extensionSearch.trim().toLowerCase()),
             ) && (
-              <div className="empty-state">No matching extensions</div>
+              <div className="empty-state">No matching installed models</div>
             )}
             {!extensionsLoading && !extensionsError && extensions.length === 0 && (
-              <div className="empty-state">No extensions installed</div>
+              <div className="empty-state">No models installed</div>
             )}
           </div>
           {extensionContextMenu && (
@@ -958,7 +1279,7 @@ export default function App() {
                   void deleteExtension(extensionContextMenu.extension);
                 }}
               >
-                🗑 Delete Extension
+                🗑 Delete Model
               </button>
               <button
                 type="button"
@@ -991,7 +1312,17 @@ export default function App() {
               <span className="eyebrow">Pipeline</span>
               <h1>{selectedExtension?.name ?? "Image to 3D"}</h1>
             </div>
-            <span className={`run-badge ${runBadgeClass}`}>{runLabel}</span>
+            <div className="canvas-toolbar-actions">
+              <button
+                type="button"
+                className="reset-layout-button"
+                title="Reset node positions and UI layout to defaults"
+                onClick={resetLayout}
+              >
+                ↺ Reset Layout
+              </button>
+              <span className={`run-badge ${runBadgeClass}`}>{runLabel}</span>
+            </div>
           </div>
 
           <div
@@ -1062,6 +1393,17 @@ export default function App() {
                         : undefined,
                       onChooseImage: template.id === "node_image_input" ? () => fileInput.current?.click() : undefined,
                       onDropImage: template.id === "node_image_input" ? handleDrop : undefined,
+                      extensions: template.id === "node_ai_generator"
+                        ? extensions.map((extension) => ({
+                            id: extension.id,
+                            name: extension.name,
+                            is_ready: extension.is_ready,
+                            status_message: extension.status_message,
+                            requires_gpu: extension.requires_gpu,
+                          }))
+                        : undefined,
+                      selectedExtensionId: template.id === "node_ai_generator" ? selectedExt : undefined,
+                      onSelectExtension: template.id === "node_ai_generator" ? setSelectedExt : undefined,
                     },
                   },
                 ]);
@@ -1108,6 +1450,8 @@ export default function App() {
                     : node
                 )));
               }}
+              initialViewport={flowViewport}
+              onViewportChange={setFlowViewport}
             />
             {edgeContextMenu && (
               <div
@@ -1320,7 +1664,7 @@ export default function App() {
                     ) : (
                       <>
                         <span className="cube-placeholder"><CubeIcon /></span>
-                        <strong>Upload image and select extension to generate</strong>
+                        <strong>Upload image and select an installed model to generate</strong>
                         <small>Ready for generation</small>
                       </>
                     )}
@@ -1369,7 +1713,7 @@ export default function App() {
                 </dl>
               )}
               <dl>
-                <div><dt>Extension ID</dt><dd>{selectedExtension.id}</dd></div>
+                <div><dt>Model ID</dt><dd>{selectedExtension.id}</dd></div>
                 <div><dt>Version</dt><dd>{selectedExtension.version}</dd></div>
                 <div><dt>Type</dt><dd>{selectedExtension.type}</dd></div>
                 <div><dt>Hardware</dt><dd>{selectedExtension.requires_gpu ? "GPU required" : "Standard"}</dd></div>
@@ -1391,7 +1735,7 @@ export default function App() {
               <div className="extension-parameters">
                 <h3>Settings</h3>
                 {Object.entries(selectedExtension.parameters ?? {}).length === 0 ? (
-                  <p className="no-parameters">This extension requires no additional settings.</p>
+                  <p className="no-parameters">This model requires no additional settings.</p>
                 ) : Object.entries(selectedExtension.parameters ?? {}).map(([name, parameter]) => {
                   const label = parameter.label ?? name;
                   const value = parameterValues[name] ?? getParameterDefault(parameter);
@@ -1493,7 +1837,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="empty-properties">Select an extension to configure it.</div>
+            <div className="empty-properties">Select an installed model to configure it.</div>
           )}
         </aside>
       </div>
