@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from . import extensions, installer
 from .routers import extensions as extensions_router
 from .runs import RunManager
-from .services.dependency_manager import audit_extension
+from .services.dependency_manager import audit_extension, install_missing_for_extension
 from .services.downloader import extension_downloader
 from .services.model_manager import ModelImportError, model_manager, validate_node_signature
 
@@ -93,6 +93,8 @@ def list_extensions():
             manifest["status_message"] = manifest["generator_notice"]
         elif audit.get("missing_packages"):
             manifest["status_message"] = f"Missing packages: {', '.join(audit['missing_packages'])}"
+        elif audit.get("error"):
+            manifest["status_message"] = audit["error"]
         elif manifest.get("requires_gpu") and not audit.get("cuda_available"):
             manifest["status_message"] = "CUDA is not available."
         else:
@@ -142,24 +144,12 @@ def get_extension_deps(ext_id: str):
     return audit_extension(ext_id)
 
 
+@app.post("/extensions/{ext_id}/install-deps")
 @app.post("/extensions/{ext_id}/deps/install")
 def install_extension_deps(ext_id: str, req: DepsInstallRequest | None = None):
-    audit = audit_extension(ext_id)
-    packages = (req.packages if req and req.packages else audit.get("missing_packages")) or []
-    if not packages:
-        return {"installed": [], "status": "ok", "message": "All required dependencies are already installed."}
-
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", *packages],
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-    if result.returncode != 0:
-        raise HTTPException(500, result.stderr.strip() or result.stdout.strip() or "pip install failed.")
-
+    result = install_missing_for_extension(ext_id, req.packages if req else None)
     reload_extensions()
-    return {"installed": packages, "status": "ok", "message": f"Installed: {', '.join(packages)}"}
+    return result
 
 
 @app.get("/extensions/{ext_id}/preflight")
