@@ -1,0 +1,24 @@
+{
+  "name": "polyfix-electron",
+  "version": "0.1.0",
+  "description": "PolyFix desktop application powered by Electron, React, and FastAPI",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "build:electron": "tsc -p tsconfig.json",
+    "build:web": "npm --prefix ../web run build",
+    "build": "npm run build:web && npm run build:electron",
+    "start": "electron .",
+    "dev:web": "npm --prefix ../web run dev",
+    "dev:electron": "cross-env ELECTRON_DEV=1 wait-on http://localhost:5173 && electron .",
+    "dev": "concurrently -k -n web,electron -c cyan,green \"npm run dev:web\" \"npm run dev:electron\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^35.1.5",
+    "typescript": "^5.8.3",
+    "wait-on": "^8.0.3"
+  }
+}
