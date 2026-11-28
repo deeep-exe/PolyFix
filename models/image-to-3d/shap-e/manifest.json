@@ -1,0 +1,13 @@
+{
+  "id": "shap-e",
+  "name": "Shap-E",
+  "version": "1.0.0",
+  "type": "model",
+  "entry": "generator.py",
+  "description": "OpenAI Shap-E Diffusers checkpoint for text-to-3D generation.",
+  "requires_gpu": true,
+  "source_url": "https://huggingface.co/openai/shap-e",
+  "storage_category": "image-to-3d",
+  "generator_notice": "Shap-E is registered from the local model folder. Its checkpoint is text-to-3D.",
+  "removable": true
+}

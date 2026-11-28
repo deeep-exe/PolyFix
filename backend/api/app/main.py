@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import extensions, installer
+from . import assets, extensions, installer
 from .routers import extensions as extensions_router
 from .runs import RunManager
 from .services.dependency_manager import audit_extension, install_missing_for_extension
@@ -73,6 +73,16 @@ def get_run_or_404(run_id: str):
     if not run:
         raise HTTPException(404, "run not found")
     return run
+
+
+def get_run_output_or_409(run_id: str) -> str:
+    r = get_run_or_404(run_id)
+    if r.status != "done" or not r.output_path:
+        raise HTTPException(409, "not ready yet")
+    return r.output_path
+
+
+app.include_router(assets.build_router(OUTPUTS, UPLOADS, get_run_output_or_409))
 
 
 # ── Routes ───────────────────────────────────────────────

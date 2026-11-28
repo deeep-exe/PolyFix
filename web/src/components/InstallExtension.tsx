@@ -4,9 +4,10 @@ import { installExtensionZip } from "../api/client";
 type Props = {
   onInstalled: () => void;
   onStartInstall: (url: string) => Promise<string>;
+  onZipStarted?: () => Promise<unknown> | void;
 };
 
-export default function InstallExtension({ onInstalled, onStartInstall }: Props) {
+export default function InstallExtension({ onInstalled, onStartInstall, onZipStarted }: Props) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -38,6 +39,7 @@ export default function InstallExtension({ onInstalled, onStartInstall }: Props)
     setMessage(null);
     try {
       await installExtensionZip(file);
+      await onZipStarted?.();
       setMessage({ ok: true, text: "ZIP upload started. Track progress below." });
       onInstalled();
     } catch (e) {

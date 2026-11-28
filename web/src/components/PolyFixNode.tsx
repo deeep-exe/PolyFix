@@ -58,6 +58,7 @@ export interface PolyFixNodeData extends Record<string, unknown> {
   }>;
   selectedExtensionId?: string;
   onSelectExtension?: (extensionId: string) => void;
+  onFixDependencies?: () => void;
   runStatus?: string;
   imageFile?: File | null;
   processedUrl?: string | null;
@@ -107,7 +108,10 @@ function PolyFixNodeView({ data }: NodeProps<PolyFixNode>) {
         : "border-slate-700";
 
   return (
-    <div className={`polyfix-node status-${statusClass}`}>
+    <div
+      className={`polyfix-node status-${statusClass}`}
+      data-category={data.category.toLowerCase().replace(/\s+/g, "-")}
+    >
       {data.ports.filter((port) => port.direction === "in").map((port, index, ports) => (
         <Handle
           key={port.id}
@@ -249,24 +253,32 @@ function PolyFixNodeView({ data }: NodeProps<PolyFixNode>) {
                     <option
                       key={extension.id}
                       value={extension.id}
-                      disabled={!extension.is_ready}
                     >
                       {extension.name}{extension.is_ready ? "" : " - Missing dependencies"}
                     </option>
                   ))}
                 </select>
               </label>
-              {data.extensions?.find((extension) => extension.id === data.selectedExtensionId)?.status_message && (
-                <small
-                  className={`node-model-status ${
-                    data.extensions.find((extension) => extension.id === data.selectedExtensionId)?.is_ready
-                      ? "ready"
-                      : "missing"
-                  }`}
-                >
-                  {data.extensions.find((extension) => extension.id === data.selectedExtensionId)?.status_message}
-                </small>
-              )}
+              {(() => {
+                const selectedModel = data.extensions?.find((extension) => extension.id === data.selectedExtensionId);
+                if (!selectedModel?.status_message) return null;
+                return (
+                  <>
+                    <small className={`node-model-status ${selectedModel.is_ready ? "ready" : "missing"}`}>
+                      {selectedModel.status_message}
+                    </small>
+                    {!selectedModel.is_ready && data.onFixDependencies && (
+                      <button
+                        type="button"
+                        className="node-fix-deps-button"
+                        onClick={data.onFixDependencies}
+                      >
+                        Fix / Install Dependencies
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
           {["05", "06", "07", "10"].includes(data.nodeNumber) && (
@@ -459,15 +471,19 @@ function PolyFixFlow({
         maxZoom={1.6}
         proOptions={{ hideAttribution: true }}
       >
-      <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#1e293b" />
+      <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--color-grid-dot)" />
       <Controls position="bottom-right" showInteractive={false} />
       <MiniMap
         position="bottom-left"
         nodeColor={(node) => {
-          const status = (node.data as PolyFixNodeData).status;
-          return status === "completed" ? "#75c99a" : status === "executing" ? "#d2b06f" : status === "failed" ? "#e58a91" : "#555966";
+          const category = (node.data as PolyFixNodeData).category.toLowerCase();
+          if (category.includes("input")) return "var(--color-node-input)";
+          if (category.includes("ai model")) return "var(--color-node-generation)";
+          if (category.includes("output")) return "var(--color-node-output)";
+          return "var(--color-node-processing)";
         }}
-        maskColor="rgba(12, 13, 17, 0.7)"
+        nodeStrokeColor="var(--color-divider)"
+        maskColor="var(--color-minimap-mask)"
       />
       </ReactFlow>
 
@@ -542,7 +558,6 @@ function PolyFixFlow({
               setNodeMenu(null);
             }}
           >
-            <span className="node-action-icon">🗑</span>
             Delete Node
           </button>
         </div>

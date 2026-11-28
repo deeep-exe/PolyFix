@@ -1,0 +1,11 @@
+{
+  "_class_name": "HeunDiscreteScheduler",
+  "_diffusers_version": "0.17.0.dev0",
+  "beta_schedule": "exp",
+  "trained_betas": null,
+  "num_train_timesteps": 1024,
+  "clip_sample": true,
+  "clip_sample_range": 1.0,
+  "prediction_type": "sample",
+  "use_karras_sigmas": true
+}

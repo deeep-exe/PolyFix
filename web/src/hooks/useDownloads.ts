@@ -11,12 +11,16 @@ export function useDownloads(onCompleted?: (task: ExtensionDownloadTask) => void
   const [error, setError] = useState("");
   const completedRef = useRef(new Set<string>());
   const timeoutRef = useRef<number | undefined>(undefined);
+  const unmountedRef = useRef(false);
   const onCompletedRef = useRef(onCompleted);
   onCompletedRef.current = onCompleted;
 
   const poll = useCallback(async () => {
+    window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = undefined;
     try {
       const tasks = await getDownloadTasks();
+      if (unmountedRef.current) return null;
       setDownloadTasks(tasks);
       tasks.forEach((task) => {
         if (task.status === "completed" && !completedRef.current.has(task.task_id)) {
@@ -25,36 +29,29 @@ export function useDownloads(onCompleted?: (task: ExtensionDownloadTask) => void
         }
       });
       setError("");
+      if (tasks.some((task) => task.status === "downloading")) {
+        timeoutRef.current = window.setTimeout(() => {
+          void poll();
+        }, 1500);
+      }
       return tasks;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not read download tasks.");
+      if (!unmountedRef.current) {
+        setError(e instanceof Error ? e.message : "Could not read download tasks.");
+      }
       return null;
     }
   }, []);
 
   useEffect(() => {
-    let unmounted = false;
-
-    const check = async () => {
-      const tasks = await poll();
-      if (unmounted) return;
-
-      if (tasks?.some((task) => task.status === "downloading")) {
-        timeoutRef.current = window.setTimeout(() => {
-          void check();
-        }, 2000);
-      } else {
-        timeoutRef.current = undefined;
-      }
-    };
-
-    void check();
+    unmountedRef.current = false;
+    void poll();
     return () => {
-      unmounted = true;
+      unmountedRef.current = true;
       window.clearTimeout(timeoutRef.current);
       timeoutRef.current = undefined;
     };
-  }, []);
+  }, [poll]);
 
   const startInstall = useCallback(async (url: string) => {
     setError("");
@@ -80,5 +77,6 @@ export function useDownloads(onCompleted?: (task: ExtensionDownloadTask) => void
     error,
     startInstall,
     cancelInstall,
+    refreshDownloads: poll,
   };
 }

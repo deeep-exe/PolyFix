@@ -1,0 +1,28 @@
+{
+  "_class_name": "ShapEImg2ImgPipeline",
+  "_diffusers_version": "0.17.0.dev0",
+  "scheduler": [
+    "diffusers",
+    "HeunDiscreteScheduler"
+  ],
+  "image_encoder": [
+    "transformers",
+    "CLIPVisionModel"
+  ],
+  "image_processor": [
+    "transformers",
+    "CLIPImageProcessor"
+  ],
+  "prior": [
+    "diffusers",
+    "PriorTransformer"
+  ],
+  "renderer": [
+    "shap_e",
+    "ShapERenderer"
+  ],
+  "shap_e_renderer": [
+    "shap_e",
+    "ShapERenderer"
+  ]
+}
