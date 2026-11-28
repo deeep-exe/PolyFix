@@ -291,9 +291,12 @@ button { cursor: pointer; }
 .extension-context-menu .extension-context-delete:hover, .extension-context-menu .extension-context-delete:focus-visible { border-color: rgba(244, 63, 94, 0.34); background: rgba(244, 63, 94, 0.12); outline: none; }
 .extension-context-menu .extension-context-cancel:hover, .extension-context-menu .extension-context-cancel:focus-visible { border-color: #494b56; background: #25262e; outline: none; }
 .extension-downloads {
-  margin: 8px 9px 0;
+  margin: 0 9px 12px;
   display: grid;
   gap: 6px;
+  flex-shrink: 0;
+  max-height: 220px;
+  overflow-y: auto;
 }
 .download-section-title {
   display: flex;
@@ -368,6 +371,9 @@ button { cursor: pointer; }
 .extension-ready-badge.demo { color: #d2b06f; background: rgba(210, 176, 111, 0.09); border: 1px solid rgba(210, 176, 111, 0.22); }
 .extension-ready-badge.missing { color: #e58a91; background: rgba(225, 109, 118, 0.09); border: 1px solid rgba(225, 109, 118, 0.22); }
 .extension-readiness-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 10px;
   padding: 8px;
   border: 1px solid rgba(225, 109, 118, 0.3);
@@ -376,6 +382,29 @@ button { cursor: pointer; }
   color: #e58a91;
   font-size: 10px;
   line-height: 1.4;
+}
+.extension-readiness-fix-btn,
+.node-fix-deps-button {
+  align-self: flex-start;
+  padding: 5px 10px;
+  border: 1px solid rgba(225, 184, 112, 0.45);
+  border-radius: 6px;
+  background: rgba(225, 184, 112, 0.14);
+  color: #f3c88b;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+.extension-readiness-fix-btn:hover,
+.node-fix-deps-button:hover {
+  background: rgba(225, 184, 112, 0.24);
+  border-color: rgba(225, 184, 112, 0.7);
+}
+.node-fix-deps-button {
+  margin-top: 6px;
+  width: 100%;
+  text-align: center;
 }
 .dependency-modal-backdrop {
   position: fixed; inset: 0; z-index: 1000;
@@ -459,7 +488,7 @@ button { cursor: pointer; }
 .empty-state { padding: 20px; text-align: center; color: #777b88; font-size: 12px; }
 .extension-load-error { display: grid; justify-items: center; gap: 10px; overflow-wrap: anywhere; }
 
-.install-extension { margin: 8px 9px 0; padding-top: 12px; border-top: 1px solid #292b34; }
+.install-extension { margin: 8px 9px 0; padding: 12px 0; border-top: 1px solid #292b34; flex-shrink: 0; }
 .install-extension label { display: block; margin-bottom: 7px; color: #969aa7; font-size: 10px; font-weight: 700; }
 .source-pills { display: flex; gap: 5px; margin-bottom: 7px; }
 .source-pills button {

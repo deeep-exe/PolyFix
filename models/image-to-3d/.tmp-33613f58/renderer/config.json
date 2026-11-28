@@ -1,0 +1,34 @@
+{
+  "_class_name": "ShapERenderer",
+  "_diffusers_version": "0.18.0.dev0",
+  "act_fn": "swish",
+  "d_hidden": 256,
+  "d_latent": 1024,
+  "insert_direction_at": 4,
+  "n_hidden_layers": 6,
+  "n_output": 12,
+  "param_names": [
+    "nerstf.mlp.0.weight",
+    "nerstf.mlp.1.weight",
+    "nerstf.mlp.2.weight",
+    "nerstf.mlp.3.weight"
+  ],
+  "param_shapes": [
+    [
+      256,
+      93
+    ],
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ]
+  ]
+}

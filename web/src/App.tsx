@@ -384,6 +384,14 @@ export default function App() {
     }
   }, []);
 
+  const selectExtension = useCallback((extensionId: string) => {
+    setSelectedExt(extensionId);
+    const match = extensions.find((extension) => extension.id === extensionId);
+    if (match && !match.is_ready) {
+      void auditExtension(match);
+    }
+  }, [auditExtension, extensions]);
+
   const installPromptDependencies = async () => {
     if (!dependencyPrompt) return;
     setInstallingDependencies(true);
@@ -410,6 +418,7 @@ export default function App() {
     downloadTasks,
     startInstall,
     cancelInstall,
+    refreshDownloads,
     error: downloadError,
   } = useDownloads((task) => {
     void (async () => {
@@ -670,6 +679,9 @@ export default function App() {
             ? { ...node, data: { ...node.data, status: "warning", errorMessage: message || "This node is not ready to execute." } }
             : node
         )));
+        if (preflight.dependencies && !preflight.dependencies.is_ready) {
+          void auditExtension(selectedExtension);
+        }
         return;
       }
     } catch (error) {
@@ -793,7 +805,12 @@ export default function App() {
             requires_gpu: extension.requires_gpu,
           })) : node.data.extensions,
           selectedExtensionId: isGenerator ? selectedExt : node.data.selectedExtensionId,
-          onSelectExtension: isGenerator ? setSelectedExt : node.data.onSelectExtension,
+          onSelectExtension: isGenerator ? selectExtension : node.data.onSelectExtension,
+          onFixDependencies: isGenerator
+            ? () => {
+                if (selectedExtension) void auditExtension(selectedExtension);
+              }
+            : node.data.onFixDependencies,
           onUpdateParams: isConditionNode
             ? (params: Record<string, unknown>) => {
                 setFlowNodes((current) => current.map((item) => (
@@ -825,6 +842,8 @@ export default function App() {
     selectedExt,
     parameterValues,
     selectedExtension,
+    selectExtension,
+    auditExtension,
     isGenerating,
     setFlowEdges,
     setFlowNodes,
@@ -1128,6 +1147,117 @@ export default function App() {
             />
           </label>
 
+          <div className="extension-list">
+            {extensions
+              .filter((extension) =>
+                `${extension.name} ${extension.id} ${extension.type}`
+                  .toLowerCase()
+                  .includes(extensionSearch.trim().toLowerCase()),
+              )
+              .map((extension) => {
+              const selected = extension.id === selectedExt;
+              return (
+                <div
+                  className="extension-card-wrap"
+                  key={extension.id}
+                  onContextMenu={(event) => {
+                    if (extension.removable === false) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const menuWidth = 190;
+                    const menuHeight = 112;
+                    setExtensionContextMenu({
+                      extension,
+                      x: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, event.clientX)),
+                      y: Math.max(8, Math.min(window.innerHeight - menuHeight - 8, event.clientY)),
+                    });
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={`extension-card ${selected ? "selected" : ""}`}
+                    title={extension.name}
+                    onClick={() => {
+                      setSelectedExt(extension.id);
+                      setIsPropertiesOpen(true);
+                      void auditExtension(extension);
+                    }}
+                  >
+                    <span className="extension-icon"><CubeIcon /></span>
+                    <span className="extension-copy">
+                      <strong>{extension.name}</strong>
+                      <small>v{extension.version} · {extension.type}</small>
+                      {extension.storage_path && (
+                        <small className="extension-storage-path" title={extension.storage_path}>
+                          {extension.storage_path}
+                        </small>
+                      )}
+                    </span>
+                    {extension.is_ready
+                      ? <span className={`extension-ready-badge ${extension.requires_gpu ? "gpu" : "demo"}`}>
+                          {extension.requires_gpu ? "Ready (CUDA)" : "Demo Mode"}
+                        </span>
+                      : <span className="extension-ready-badge missing">Missing Dependencies / No CUDA</span>}
+                  </button>
+                </div>
+              );
+            })}
+            {extensionsLoading && <div className="empty-state">Loading installed models...</div>}
+            {!extensionsLoading && extensionsError && (
+              <div className="empty-state extension-load-error">
+                <span>{extensionsError}</span>
+                <button type="button" onClick={() => void loadExtensions()}>Retry Loading Models</button>
+              </div>
+            )}
+            {!extensionsLoading && extensionSearch.trim() && !extensions.some((extension) =>
+              `${extension.name} ${extension.id} ${extension.type}`
+                .toLowerCase()
+                .includes(extensionSearch.trim().toLowerCase()),
+            ) && (
+              <div className="empty-state">No matching installed models</div>
+            )}
+            {!extensionsLoading && !extensionsError && extensions.length === 0 && (
+              <div className="empty-state">No models installed</div>
+            )}
+          </div>
+          {extensionContextMenu && (
+            <div
+              ref={extensionMenuRef}
+              className="extension-context-menu"
+              role="menu"
+              aria-label={`Actions for ${extensionContextMenu.extension.name}`}
+              style={{ left: extensionContextMenu.x, top: extensionContextMenu.y }}
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <span className="extension-context-menu-title">{extensionContextMenu.extension.name}</span>
+              <button
+                type="button"
+                role="menuitem"
+                className="extension-context-delete"
+                onClick={() => {
+                  setExtensionContextMenu(null);
+                  void deleteExtension(extensionContextMenu.extension);
+                }}
+              >
+                Delete Model
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="extension-context-cancel"
+                onClick={() => setExtensionContextMenu(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          <InstallExtension
+            onInstalled={() => void loadExtensions()}
+            onStartInstall={startInstall}
+            onZipStarted={refreshDownloads}
+          />
           {(downloadTasks.length > 0 || downloadError) && (
             <div className="extension-downloads">
               <div className="download-section-title">
@@ -1186,116 +1316,6 @@ export default function App() {
               ))}
             </div>
           )}
-
-          <div className="extension-list">
-            {extensions
-              .filter((extension) =>
-                `${extension.name} ${extension.id} ${extension.type}`
-                  .toLowerCase()
-                  .includes(extensionSearch.trim().toLowerCase()),
-              )
-              .map((extension) => {
-              const selected = extension.id === selectedExt;
-              return (
-                <div
-                  className="extension-card-wrap"
-                  key={extension.id}
-                  onContextMenu={(event) => {
-                    if (extension.removable === false) return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const menuWidth = 190;
-                    const menuHeight = 112;
-                    setExtensionContextMenu({
-                      extension,
-                      x: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, event.clientX)),
-                      y: Math.max(8, Math.min(window.innerHeight - menuHeight - 8, event.clientY)),
-                    });
-                  }}
-                >
-                  <button
-                    type="button"
-                    className={`extension-card ${selected ? "selected" : ""}`}
-                    onClick={() => {
-                      setSelectedExt(extension.id);
-                      setIsPropertiesOpen(true);
-                      void auditExtension(extension);
-                    }}
-                  >
-                    <span className="extension-icon"><CubeIcon /></span>
-                    <span className="extension-copy">
-                      <strong>{extension.name}</strong>
-                      <small>v{extension.version} · {extension.type}</small>
-                      {extension.storage_path && (
-                        <small className="extension-storage-path" title={extension.storage_path}>
-                          <span aria-hidden="true">📁</span> {extension.storage_path}
-                        </small>
-                      )}
-                    </span>
-                    {extension.is_ready
-                      ? <span className={`extension-ready-badge ${extension.requires_gpu ? "gpu" : "demo"}`}>
-                          {extension.requires_gpu ? "Ready (CUDA)" : "Demo Mode"}
-                        </span>
-                      : <span className="extension-ready-badge missing">Missing Dependencies / No CUDA</span>}
-                  </button>
-                </div>
-              );
-            })}
-            {extensionsLoading && <div className="empty-state">Loading installed models...</div>}
-            {!extensionsLoading && extensionsError && (
-              <div className="empty-state extension-load-error">
-                <span>{extensionsError}</span>
-                <button type="button" onClick={() => void loadExtensions()}>Retry Loading Models</button>
-              </div>
-            )}
-            {!extensionsLoading && extensionSearch.trim() && !extensions.some((extension) =>
-              `${extension.name} ${extension.id} ${extension.type}`
-                .toLowerCase()
-                .includes(extensionSearch.trim().toLowerCase()),
-            ) && (
-              <div className="empty-state">No matching installed models</div>
-            )}
-            {!extensionsLoading && !extensionsError && extensions.length === 0 && (
-              <div className="empty-state">No models installed</div>
-            )}
-          </div>
-          {extensionContextMenu && (
-            <div
-              ref={extensionMenuRef}
-              className="extension-context-menu"
-              role="menu"
-              aria-label={`Actions for ${extensionContextMenu.extension.name}`}
-              style={{ left: extensionContextMenu.x, top: extensionContextMenu.y }}
-              onClick={(event) => event.stopPropagation()}
-              onContextMenu={(event) => event.preventDefault()}
-            >
-              <span className="extension-context-menu-title">{extensionContextMenu.extension.name}</span>
-              <button
-                type="button"
-                role="menuitem"
-                className="extension-context-delete"
-                onClick={() => {
-                  setExtensionContextMenu(null);
-                  void deleteExtension(extensionContextMenu.extension);
-                }}
-              >
-                🗑 Delete Model
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="extension-context-cancel"
-                onClick={() => setExtensionContextMenu(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-
-          <InstallExtension
-            onInstalled={() => void loadExtensions()}
-            onStartInstall={startInstall}
-          />
         </aside>
 
         <section
@@ -1403,7 +1423,12 @@ export default function App() {
                           }))
                         : undefined,
                       selectedExtensionId: template.id === "node_ai_generator" ? selectedExt : undefined,
-                      onSelectExtension: template.id === "node_ai_generator" ? setSelectedExt : undefined,
+                      onSelectExtension: template.id === "node_ai_generator" ? selectExtension : undefined,
+                      onFixDependencies: template.id === "node_ai_generator"
+                        ? () => {
+                            if (selectedExtension) void auditExtension(selectedExtension);
+                          }
+                        : undefined,
                     },
                   },
                 ]);
@@ -1721,7 +1746,14 @@ export default function App() {
               </dl>
               {!selectedExtension.is_ready && (
                 <div className="extension-readiness-warning" role="alert">
-                  Generation is unavailable: {selectedExtension.status_message}
+                  <span>Generation is unavailable: {selectedExtension.status_message}</span>
+                  <button
+                    type="button"
+                    className="extension-readiness-fix-btn"
+                    onClick={() => void auditExtension(selectedExtension)}
+                  >
+                    Fix / Install Dependencies
+                  </button>
                 </div>
               )}
               <ExtensionDocPanel

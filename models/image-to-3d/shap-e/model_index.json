@@ -1,0 +1,28 @@
+{
+  "_class_name": "ShapEPipeline",
+  "_diffusers_version": "0.17.0.dev0",
+  "scheduler": [
+    "diffusers",
+    "HeunDiscreteScheduler"
+  ],
+  "text_encoder": [
+    "transformers",
+    "CLIPTextModelWithProjection"
+  ],
+  "tokenizer": [
+    "transformers",
+    "CLIPTokenizer"
+  ],
+  "prior": [
+    "diffusers",
+    "PriorTransformer"
+  ],
+  "renderer": [
+    "shap_e",
+    "ShapERenderer"
+  ],
+  "shap_e_renderer": [
+    "shap_e",
+    "ShapERenderer"
+  ]
+}

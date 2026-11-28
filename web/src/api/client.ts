@@ -273,3 +273,66 @@ export async function cancelDownloadTask(taskId: string): Promise<void> {
   });
   if (!response.ok) throw await responseError(response);
 }
+
+// ── Imported / analysed assets ───────────────────────────
+export const MODEL_FILE_ACCEPT = ".glb,.gltf,.obj,.stl,.ply,.off";
+
+export type QaCheckStatus = "pass" | "warn" | "fail" | "info";
+export type QaCheckId = "mesh_health" | "asset_weight" | "texture_atlas" | "pbr_completeness" | "shape_fidelity";
+
+export type QaReport = {
+  stats: {
+    meshes: number;
+    faces: number;
+    vertices: number;
+    file_size: number;
+    extents: number[];
+    watertight: boolean;
+    winding_consistent: boolean;
+    degenerate_faces: number;
+    has_uv: boolean;
+    uv_overlap: number | null;
+    texture_maps: Record<"albedo" | "normal" | "occlusion" | "metallic_roughness", boolean>;
+    hausdorff: number | null;
+  };
+  checks: { id: QaCheckId; status: QaCheckStatus; value: string; detail?: string[] }[];
+};
+
+export type OptimizeSettings = {
+  target_ratio: number;
+  target_faces?: number | null;
+  merge_vertices: boolean;
+  remove_degenerate: boolean;
+  fix_normals: boolean;
+  fill_holes: boolean;
+};
+
+export type ModelAsset = {
+  id: string;
+  name: string;
+  source_format: string;
+  original: QaReport;
+  optimized: QaReport | null;
+  settings: OptimizeSettings | null;
+};
+
+export type AssetVariant = "original" | "optimized";
+
+export function importModelFile(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return fetchJson<ModelAsset>(`${BASE}/assets/import`, { method: "POST", body });
+}
+
+export const importRunOutput = (runId: string) =>
+  fetchJson<ModelAsset>(`${BASE}/assets/from-run/${runId}`, { method: "POST" });
+
+export const optimizeAsset = (assetId: string, settings: OptimizeSettings) =>
+  fetchJson<ModelAsset>(`${BASE}/assets/${assetId}/optimize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+
+export const assetFileUrl = (assetId: string, variant: AssetVariant, version = 0) =>
+  `${BASE}/assets/${assetId}/file/${variant}?v=${version}`;

@@ -1,0 +1,19 @@
+{
+  "_class_name": "PriorTransformer",
+  "_diffusers_version": "0.18.0.dev0",
+  "added_emb_type": null,
+  "additional_embeddings": 0,
+  "attention_head_dim": 64,
+  "clip_embed_dim": 2048,
+  "dropout": 0.0,
+  "embedding_dim": 1024,
+  "embedding_proj_dim": 768,
+  "embedding_proj_norm_type": null,
+  "encoder_hid_proj_type": null,
+  "norm_in_type": "layer",
+  "num_attention_heads": 16,
+  "num_embeddings": 1024,
+  "num_layers": 24,
+  "time_embed_act_fn": "gelu",
+  "time_embed_dim": 4096
+}

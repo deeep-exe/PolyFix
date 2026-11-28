@@ -1,4 +1,5 @@
 import type { BackendConnectionState } from "../api/client";
+import { useTheme } from "../theme/ThemeContext";
 
 type HeaderProps = {
   activeView: "studio" | "qa";
@@ -24,6 +25,7 @@ export default function Header({
   onOpenProperties,
 }: HeaderProps) {
   const connected = backendStatus === "connected";
+  const { theme, toggleTheme } = useTheme();
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -44,13 +46,14 @@ export default function Header({
 
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="m12 2 8.5 4.9v9.8L12 22l-8.5-5.3V6.9L12 2Z" /><path d="m3.8 7 8.2 4.9L20.2 7M12 12v9.7" /></svg>
+            {/* BASE_URL is "./", so this resolves next to index.html both in the
+                dev server and when Electron loads the build from file:// */}
+            <img src={`${import.meta.env.BASE_URL}box.png`} alt="" />
           </div>
           <div>
             <strong>PolyFix</strong>
             <span>Model Studio</span>
           </div>
-          <span className="version-badge">v1.0</span>
         </div>
       </div>
 
@@ -73,6 +76,24 @@ export default function Header({
       </nav>
 
       <div className="topbar-actions">
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+          title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+        >
+          {theme === "light" ? (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20.2 15.4A8.5 8.5 0 0 1 8.6 3.8 8.5 8.5 0 1 0 20.2 15.4Z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
+            </svg>
+          )}
+        </button>
         {activeView === "studio" && onOpenProperties && (
           <button
             type="button"
